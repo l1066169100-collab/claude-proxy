@@ -21,6 +21,9 @@ COPY Makefile VERSION tsconfig.json ./
 COPY frontend/ ./frontend/
 COPY backend-go/ ./backend-go/
 
+# 生成 go.sum 文件（如果不存在）
+RUN cd backend-go && go mod download && go mod tidy
+
 # 使用 bun 安装前端依赖（比 npm 快 10-100 倍）
 RUN cd frontend && bun install
 
