@@ -8,7 +8,7 @@ import * as openai from './providers/openai'
 import * as claude from './providers/claude'
 import { configManager, UpstreamConfig } from './config/config'
 import { envConfigManager } from './config/env'
-import { maskApiKey } from './utils/index'
+import { maskApiKey, detectUpstreamHtmlError } from './utils/index'
 
 // 智能JSON截断函数 - 只截断长文本内容，保持结构完整
 function truncateJsonIntelligently(obj: any, maxTextLength: number = 500): any {
@@ -653,7 +653,31 @@ app.post('/v1/messages', async (req, res) => {
               shouldFailover = true
               try {
                 const text = await providerResponse.clone().text()
-                lastFailoverError = { status: providerResponse.status, text }
+                const htmlInfo = detectUpstreamHtmlError(text)
+
+                if (htmlInfo.isHtml) {
+                  const errorBody: any = {
+                    error: htmlInfo.isCloudflare
+                      ? '上游触发了 Cloudflare 防护，代理无法直接通过'
+                      : '上游返回了HTML错误页面，无法解析为JSON响应',
+                    code: htmlInfo.isCloudflare ? 'UPSTREAM_CLOUDFLARE_CHALLENGE' : 'UPSTREAM_HTML_ERROR',
+                    upstream: {
+                      name: upstream.name || upstream.serviceType,
+                      baseUrl: upstream.baseUrl
+                    }
+                  }
+
+                  if (htmlInfo.reason) {
+                    errorBody.reason = htmlInfo.reason
+                  }
+                  if (htmlInfo.hint) {
+                    errorBody.hint = htmlInfo.hint
+                  }
+
+                  lastFailoverError = { status: providerResponse.status, body: errorBody }
+                } else {
+                  lastFailoverError = { status: providerResponse.status, text }
+                }
               } catch {}
             }
           }
