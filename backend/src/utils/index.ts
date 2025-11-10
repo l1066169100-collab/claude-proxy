@@ -123,6 +123,42 @@ export function buildUrl(baseUrl: string, endpoint: string): string {
   return finalUrl + endpoint
 }
 
+export interface HtmlErrorDetectionResult {
+  isHtml: boolean
+  isCloudflare?: boolean
+  reason?: string
+  hint?: string
+}
+
+// 检测上游返回的HTML错误信息，便于输出更友好的错误提示
+export function detectUpstreamHtmlError(html: string): HtmlErrorDetectionResult {
+  if (!html) {
+    return { isHtml: false }
+  }
+
+  const trimmed = html.trim()
+  const lower = trimmed.toLowerCase()
+
+  // 判断是否是HTML响应
+  const isHtml = lower.startsWith('<!doctype html') || lower.startsWith('<html')
+  if (!isHtml) {
+    return { isHtml: false }
+  }
+
+  const result: HtmlErrorDetectionResult = { isHtml: true }
+
+  // Cloudflare 防护页常见标志
+  if (lower.includes('cloudflare') && (lower.includes('just a moment') || lower.includes('__cf_chl_opt'))) {
+    result.isCloudflare = true
+    result.reason = '检测到 Cloudflare 浏览器挑战页面'
+    result.hint =
+      '目标渠道启用了 Cloudflare 防护，需要先在浏览器中完成登录/人机验证或配置 cf_clearance Cookie 后再访问'
+    return result
+  }
+
+  return result
+}
+
 export async function processProviderStream(
   providerResponse: Response,
   processLine: (
